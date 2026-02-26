@@ -768,6 +768,13 @@
       let isDownloading = false;
       let viewSize = 10;
 
+      // Page cache: pageIndex → Uint8Array(240). Last page is never cached.
+      const pageCache = new Map();
+      // Debounce timer for page navigation
+      const DEBOUNCE_MS = 300;
+      let debounceTimer = null;
+      let isLoadingPage = false;
+
       // Leaflet map (lazy init)
       let map = null;
       let pathLayer = null;
@@ -1204,6 +1211,10 @@
 
       async function disconnect() {
         stopPolling();
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
         try {
           if (dataChar)
             dataChar.removeEventListener(
@@ -1226,6 +1237,7 @@
           totalPageCount = 0;
           currentPage = 0;
           lastPageData = null;
+          pageCache.clear();
           fileSizeEl.textContent = "\u2014";
           totalPagesEl.style.display = "none";
           lastPageEl.style.display = "none";
@@ -1288,15 +1300,29 @@
           progressText.textContent = `0 / ${totalPages}`;
 
           for (let page = 0; page < totalPages; page++) {
-            const req = new Uint8Array(5);
-            req[0] = 0x01;
-            req[1] = page & 0xff;
-            req[2] = (page >>> 8) & 0xff;
-            req[3] = (page >>> 16) & 0xff;
-            req[4] = (page >>> 24) & 0xff;
+            const isLast = page === totalPages - 1;
+            const cached = !isLast ? pageCache.get(page) : undefined;
 
-            const result = await sendCommandAndWait(req, 0x01, 7000);
-            allData.set(result.pageData, page * 240);
+            let pageData;
+            if (cached) {
+              pageData = cached;
+            } else {
+              const req = new Uint8Array(5);
+              req[0] = 0x01;
+              req[1] = page & 0xff;
+              req[2] = (page >>> 8) & 0xff;
+              req[3] = (page >>> 16) & 0xff;
+              req[4] = (page >>> 24) & 0xff;
+
+              const result = await sendCommandAndWait(req, 0x01, 7000);
+              pageData = result.pageData;
+              // Cache non-last pages
+              if (!isLast) {
+                pageCache.set(page, pageData);
+              }
+            }
+
+            allData.set(pageData, page * 240);
 
             // Live table update: show current viewSize chunk
             const step = viewSize / 10;
@@ -1324,7 +1350,9 @@
           a.download = "location.bin";
           a.click();
           URL.revokeObjectURL(url);
-          log(`download complete: location.bin (${fileSize} bytes)`);
+          log(
+            `download complete: location.bin (${fileSize} bytes), cache: ${pageCache.size} pages`,
+          );
 
           setTimeout(() => {
             progressContainer.classList.remove("visible");
@@ -1339,6 +1367,13 @@
 
       async function fetchOnePage(page) {
         page = page >>> 0;
+        const isLastPage = totalPageCount > 0 && page === totalPageCount - 1;
+
+        // Use cache for non-last pages
+        if (!isLastPage && pageCache.has(page)) {
+          return pageCache.get(page);
+        }
+
         const payload = new Uint8Array(5);
         payload[0] = 0x01;
         payload[1] = page & 0xff;
@@ -1346,6 +1381,12 @@
         payload[3] = (page >>> 16) & 0xff;
         payload[4] = (page >>> 24) & 0xff;
         const result = await sendCommandAndWait(payload, 0x01, 5000);
+
+        // Cache non-last pages (append-only data → completed pages are immutable)
+        if (!isLastPage) {
+          pageCache.set(page, result.pageData);
+        }
+
         return result.pageData;
       }
 
@@ -1364,23 +1405,40 @@
         }
 
         currentPage = startPage;
-        log(`loaded pages ${startPage}-${endPage - 1} (${count * 10} records)`);
+        log(
+          `loaded pages ${startPage}-${endPage - 1} (${count * 10} records, cache: ${pageCache.size})`,
+        );
         renderPageTable(combined);
       }
 
-      pageBtn.addEventListener("click", async () => {
-        try {
-          await loadPage(Number(pageInput.value || 0));
-        } catch (err) {
-          log(`page cmd failed: ${err.message}`);
+      // Debounced page load: cancels previous pending request
+      function debouncedLoadPage(startPage) {
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
         }
+        debounceTimer = setTimeout(async () => {
+          debounceTimer = null;
+          if (isLoadingPage) return;
+          isLoadingPage = true;
+          try {
+            await loadPage(startPage);
+          } catch (err) {
+            log(`page cmd failed: ${err.message}`);
+          } finally {
+            isLoadingPage = false;
+          }
+        }, DEBOUNCE_MS);
+      }
+
+      pageBtn.addEventListener("click", () => {
+        debouncedLoadPage(Number(pageInput.value || 0));
       });
 
       pageInput.addEventListener("keydown", (e) => {
         if (e.key === "Enter") pageBtn.click();
       });
 
-      async function changeViewSize(newSize) {
+      function changeViewSize(newSize) {
         newSize = Math.max(10, Math.round(newSize / 10) * 10);
         if (newSize === viewSize) return;
         viewSize = newSize;
@@ -1389,11 +1447,7 @@
         if (lastPageData && cmdChar) {
           const step = viewSize / 10;
           const alignedStart = Math.floor(currentPage / step) * step;
-          try {
-            await loadPage(alignedStart);
-          } catch (err) {
-            log(`page cmd failed: ${err.message}`);
-          }
+          debouncedLoadPage(alignedStart);
         } else {
           updateNavUI();
         }
@@ -1401,42 +1455,25 @@
       vsMinus.addEventListener("click", () => changeViewSize(viewSize - 10));
       vsPlus.addEventListener("click", () => changeViewSize(viewSize + 10));
 
-      navFirst.addEventListener("click", async () => {
-        try {
-          await loadPage(0);
-        } catch (err) {
-          log(`page cmd failed: ${err.message}`);
-        }
+      navFirst.addEventListener("click", () => {
+        debouncedLoadPage(0);
       });
-      navPrev.addEventListener("click", async () => {
+      navPrev.addEventListener("click", () => {
         const step = viewSize / 10;
-        const prev = Math.max(0, currentPage - step);
-        try {
-          await loadPage(prev);
-        } catch (err) {
-          log(`page cmd failed: ${err.message}`);
-        }
+        debouncedLoadPage(Math.max(0, currentPage - step));
       });
-      navNext.addEventListener("click", async () => {
+      navNext.addEventListener("click", () => {
         const step = viewSize / 10;
-        try {
-          await loadPage(currentPage + step);
-        } catch (err) {
-          log(`page cmd failed: ${err.message}`);
-        }
+        debouncedLoadPage(currentPage + step);
       });
-      navLast.addEventListener("click", async () => {
+      navLast.addEventListener("click", () => {
         if (totalPageCount <= 0) return;
         const step = viewSize / 10;
         const lastStart = Math.max(
           0,
           Math.floor((totalPageCount - 1) / step) * step,
         );
-        try {
-          await loadPage(lastStart);
-        } catch (err) {
-          log(`page cmd failed: ${err.message}`);
-        }
+        debouncedLoadPage(lastStart);
       });
 
       exportCsvBtn.addEventListener("click", () => {
@@ -1478,6 +1515,7 @@
           deleteResultEl.style.display = "inline";
           deleteResultEl.textContent = result.success ? "Deleted" : "Failed";
           if (result.success) {
+            pageCache.clear();
             updatePageStats(0);
             fileSizeEl.textContent = "0 bytes";
             totalPagesEl.style.display = "none";
