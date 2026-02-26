@@ -1,0 +1,17 @@
+export const Colors = {
+  bg: '#0f1117',
+  surface: '#1a1d27',
+  surfaceHover: '#222633',
+  border: '#2a2e3d',
+  text: '#e4e6ed',
+  textDim: '#8b8fa3',
+  accent: '#6c8cff',
+  accentGlow: 'rgba(108, 140, 255, 0.15)',
+  green: '#4ade80',
+  greenGlow: 'rgba(74, 222, 128, 0.15)',
+  red: '#f87171',
+  redGlow: 'rgba(248, 113, 113, 0.15)',
+  yellow: '#fbbf24',
+  radius: 12,
+  mono: 'monospace',
+};
