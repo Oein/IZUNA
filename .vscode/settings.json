@@ -1,0 +1,17 @@
+{
+  "C_Cpp.intelliSenseEngine": "default",
+  "idf.openOcdConfigs": ["board/esp32c3-builtin.cfg"],
+  "idf.port": "/dev/tty.usbmodem101",
+  "idf.currentSetup": "/Users/oein/.espressif/v5.5.3/esp-idf",
+  "idf.customExtraVars": {
+    "IDF_TARGET": "esp32c3"
+  },
+  "clangd.path": "/Users/oein/.espressif/tools/esp-clang/esp-19.1.2_20250312/esp-clang/bin/clangd",
+  "clangd.arguments": [
+    "--background-index",
+    "--query-driver=**",
+    "--compile-commands-dir=/Users/oein/oein/Pjs/Bluedroid_Connection/build"
+  ],
+  "idf.monitorPort": "/dev/tty.usbmodem101",
+  "idf.flashType": "JTAG"
+}

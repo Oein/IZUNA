@@ -1,0 +1,1497 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Georecord BLE Client</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0f1117;
+        --surface: #1a1d27;
+        --surface-hover: #222633;
+        --border: #2a2e3d;
+        --text: #e4e6ed;
+        --text-dim: #8b8fa3;
+        --accent: #6c8cff;
+        --accent-glow: rgba(108, 140, 255, 0.15);
+        --green: #4ade80;
+        --green-glow: rgba(74, 222, 128, 0.15);
+        --red: #f87171;
+        --red-glow: rgba(248, 113, 113, 0.15);
+        --yellow: #fbbf24;
+        --radius: 12px;
+        --mono:
+          ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+      }
+
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto,
+          sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        min-height: 100vh;
+        line-height: 1.5;
+      }
+
+      .app {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 24px 16px 48px;
+      }
+
+      /* Header */
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 28px;
+      }
+      .header-icon {
+        width: 42px;
+        height: 42px;
+        background: var(--accent-glow);
+        border: 1px solid var(--accent);
+        border-radius: 12px;
+        display: grid;
+        place-items: center;
+        font-size: 20px;
+        flex-shrink: 0;
+      }
+      .header h1 {
+        font-size: 20px;
+        font-weight: 700;
+        letter-spacing: -0.3px;
+      }
+      .header p {
+        font-size: 13px;
+        color: var(--text-dim);
+      }
+
+      /* Card */
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-bottom: 16px;
+        transition: border-color 0.2s;
+      }
+      .card:hover {
+        border-color: #3a3f52;
+      }
+
+      .card-title {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        color: var(--text-dim);
+        margin-bottom: 16px;
+      }
+
+      /* Connection */
+      .connection-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+        font-family: var(--mono);
+        background: var(--red-glow);
+        color: var(--red);
+        border: 1px solid rgba(248, 113, 113, 0.25);
+        transition: all 0.3s;
+      }
+      .status-badge.connected {
+        background: var(--green-glow);
+        color: var(--green);
+        border-color: rgba(74, 222, 128, 0.25);
+      }
+      .status-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--red);
+        transition: background 0.3s;
+      }
+      .status-badge.connected .status-dot {
+        background: var(--green);
+        box-shadow: 0 0 6px var(--green);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
+      .device-name {
+        margin-left: auto;
+        font-size: 13px;
+        font-family: var(--mono);
+        color: var(--text-dim);
+      }
+
+      /* Buttons */
+      button {
+        font-family: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: var(--surface-hover);
+        color: var(--text);
+        cursor: pointer;
+        transition: all 0.15s;
+        white-space: nowrap;
+      }
+      button:hover:not(:disabled) {
+        background: #2d3248;
+        border-color: #464c66;
+      }
+      button:active:not(:disabled) {
+        transform: scale(0.97);
+      }
+      button:disabled {
+        opacity: 0.35;
+        cursor: not-allowed;
+      }
+      button.primary {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+      button.primary:hover:not(:disabled) {
+        background: #5a7bff;
+        border-color: #5a7bff;
+      }
+      button.danger {
+        color: var(--red);
+        border-color: rgba(248, 113, 113, 0.3);
+      }
+      button.danger:hover:not(:disabled) {
+        background: var(--red-glow);
+        border-color: var(--red);
+      }
+
+      /* GPS Grid */
+      .gps-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 480px) {
+        .gps-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .gps-item {
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 12px 14px;
+      }
+      .gps-item .label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-dim);
+        margin-bottom: 4px;
+      }
+      .gps-item .value {
+        font-family: var(--mono);
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text);
+        word-break: break-all;
+      }
+      .gps-item .value.empty {
+        color: var(--text-dim);
+      }
+
+      /* Command rows */
+      .cmd-section {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .cmd-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .cmd-info {
+        font-size: 13px;
+        font-family: var(--mono);
+        color: var(--text-dim);
+        background: var(--bg);
+        padding: 5px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--border);
+      }
+      .separator {
+        width: 100%;
+        height: 1px;
+        background: var(--border);
+        margin: 4px 0;
+      }
+
+      /* Input */
+      input[type="number"] {
+        font-family: var(--mono);
+        font-size: 13px;
+        padding: 8px 12px;
+        width: 100px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--bg);
+        color: var(--text);
+        outline: none;
+        transition: border-color 0.15s;
+      }
+      input[type="number"]:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px var(--accent-glow);
+      }
+
+      /* Log */
+      .log-wrapper {
+        position: relative;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .log-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .log-header span {
+        font-size: 11px;
+        color: var(--text-dim);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .log-clear {
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 4px;
+      }
+      #log {
+        width: 100%;
+        height: 200px;
+        padding: 10px 12px;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.6;
+        background: transparent;
+        color: var(--text-dim);
+        border: none;
+        resize: vertical;
+        outline: none;
+      }
+
+      /* Progress Bar */
+      .progress-container {
+        display: none;
+        margin-top: 8px;
+      }
+      .progress-container.visible {
+        display: block;
+      }
+      .progress-bar-track {
+        width: 100%;
+        height: 6px;
+        background: var(--bg);
+        border-radius: 3px;
+        overflow: hidden;
+        border: 1px solid var(--border);
+      }
+      .progress-bar-fill {
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, var(--accent), #a78bfa);
+        border-radius: 3px;
+        transition: width 0.15s;
+      }
+      .progress-text {
+        font-size: 11px;
+        font-family: var(--mono);
+        color: var(--text-dim);
+        margin-top: 6px;
+        text-align: right;
+      }
+
+      /* Table Card */
+      .table-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 12px;
+      }
+      .page-nav {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .page-nav button {
+        padding: 6px 10px;
+        border: none;
+        border-radius: 0;
+        background: transparent;
+        color: var(--text);
+        font-size: 14px;
+        line-height: 1;
+        border-right: 1px solid var(--border);
+      }
+      .page-nav button:last-child {
+        border-right: none;
+      }
+      .page-nav button:hover:not(:disabled) {
+        background: var(--surface-hover);
+      }
+      .page-nav-label {
+        padding: 6px 14px;
+        font-family: var(--mono);
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--text);
+        border-right: 1px solid var(--border);
+        white-space: nowrap;
+        min-width: 100px;
+        text-align: center;
+      }
+      .page-jump {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: 4px;
+      }
+      .page-jump input {
+        width: 70px;
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+      .page-jump button {
+        padding: 6px 10px;
+        font-size: 12px;
+      }
+      .view-size-stepper {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        overflow: hidden;
+      }
+      .view-size-stepper button {
+        padding: 5px 10px;
+        border: none;
+        border-radius: 0;
+        background: transparent;
+        color: var(--text);
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1;
+        border-right: 1px solid var(--border);
+      }
+      .view-size-stepper button:last-child {
+        border-right: none;
+      }
+      .view-size-stepper button:hover:not(:disabled) {
+        background: var(--surface-hover);
+      }
+      .view-size-stepper .vs-label {
+        padding: 5px 10px;
+        font-family: var(--mono);
+        font-size: 11px;
+        font-weight: 600;
+        color: var(--text);
+        border-right: 1px solid var(--border);
+        text-align: center;
+        min-width: 50px;
+        white-space: nowrap;
+      }
+      .table-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-left: auto;
+      }
+      .table-actions button {
+        padding: 5px 10px;
+        font-size: 11px;
+      }
+      .record-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 11px;
+        font-weight: 600;
+        font-family: var(--mono);
+        background: var(--accent-glow);
+        color: var(--accent);
+        border: 1px solid rgba(108, 140, 255, 0.2);
+      }
+      .table-wrapper {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+        font-family: var(--mono);
+      }
+      thead th {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        color: var(--text-dim);
+        background: rgba(255, 255, 255, 0.03);
+        padding: 10px 12px;
+        text-align: left;
+        border-bottom: 1px solid var(--border);
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+      tbody td {
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--border);
+        color: var(--text);
+        white-space: nowrap;
+      }
+      tbody tr:last-child td {
+        border-bottom: none;
+      }
+      tbody tr:hover {
+        background: rgba(255, 255, 255, 0.04);
+      }
+      tbody tr.row-empty td {
+        color: var(--text-dim);
+        opacity: 0.5;
+      }
+      tbody td.empty-cell {
+        color: var(--text-dim);
+      }
+      .table-empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 20px;
+        color: var(--text-dim);
+        text-align: center;
+      }
+      .table-empty-state .empty-icon {
+        font-size: 28px;
+        margin-bottom: 10px;
+        opacity: 0.5;
+      }
+      .table-empty-state p {
+        font-size: 13px;
+        line-height: 1.5;
+      }
+      .table-empty-state p:first-of-type {
+        font-weight: 600;
+        color: var(--text);
+        margin-bottom: 2px;
+      }
+
+      /* Map */
+      .map-container {
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        overflow: hidden;
+        margin-bottom: 12px;
+        height: 300px;
+      }
+      .map-container.hidden {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <!-- Header -->
+      <div class="header">
+        <div class="header-icon">📡</div>
+        <div>
+          <h1>Georecord BLE</h1>
+          <p>Bluetooth GPS data client</p>
+        </div>
+      </div>
+
+      <!-- Connection -->
+      <div class="card">
+        <div class="connection-bar">
+          <button id="connectBtn" class="primary">Connect</button>
+          <button id="disconnectBtn" disabled>Disconnect</button>
+          <div id="statusBadge" class="status-badge">
+            <span class="status-dot"></span>
+            <span id="status">Disconnected</span>
+          </div>
+          <span id="deviceName" class="device-name"></span>
+        </div>
+      </div>
+
+      <!-- Live GPS -->
+      <div class="card">
+        <div class="card-title">Live GPS &mdash; FF01 Notify</div>
+        <div class="gps-grid">
+          <div class="gps-item">
+            <div class="label">KST Time</div>
+            <div id="kst" class="value empty">&mdash;</div>
+          </div>
+          <div class="gps-item">
+            <div class="label">Time (Compact)</div>
+            <div id="epoch" class="value empty">&mdash;</div>
+          </div>
+          <div class="gps-item">
+            <div class="label">Latitude</div>
+            <div id="lat" class="value empty">&mdash;</div>
+          </div>
+          <div class="gps-item">
+            <div class="label">Longitude</div>
+            <div id="lon" class="value empty">&mdash;</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Commands -->
+      <div class="card">
+        <div class="card-title">Commands &mdash; FF02</div>
+        <div class="cmd-section">
+          <div class="cmd-row">
+            <button id="sizeBtn" disabled>Get File Size</button>
+            <span id="fileSize" class="cmd-info">&mdash;</span>
+            <span id="totalPages" class="cmd-info" style="display: none"></span>
+          </div>
+          <div class="cmd-row">
+            <button id="downloadAllBtn" disabled>Download All</button>
+            <span id="lastPage" class="cmd-info" style="display: none"></span>
+          </div>
+          <div id="downloadProgress" class="progress-container">
+            <div class="progress-bar-track">
+              <div id="progressFill" class="progress-bar-fill"></div>
+            </div>
+            <div id="progressText" class="progress-text"></div>
+          </div>
+          <div class="separator"></div>
+          <div class="cmd-row">
+            <button id="deleteBtn" class="danger" disabled>
+              Delete All Data
+            </button>
+            <span id="deleteResult" class="cmd-info" style="display: none"
+              >&mdash;</span
+            >
+          </div>
+        </div>
+      </div>
+
+      <!-- Page Records Table -->
+      <div class="card" id="tableCard">
+        <div class="card-title">Page Records</div>
+
+        <!-- Toolbar: nav + actions -->
+        <div class="table-toolbar" id="tableToolbar" style="display: none">
+          <div class="page-nav">
+            <button id="navFirst" title="First page" disabled>&laquo;</button>
+            <button id="navPrev" title="Previous page" disabled>
+              &lsaquo;
+            </button>
+            <span class="page-nav-label" id="navLabel">0 / 0</span>
+            <button id="navNext" title="Next page" disabled>&rsaquo;</button>
+            <button id="navLast" title="Last page" disabled>&raquo;</button>
+          </div>
+          <div class="page-jump">
+            <input
+              id="pageInput"
+              type="number"
+              min="0"
+              value="0"
+              placeholder="#"
+            />
+            <button id="pageBtn" disabled>Go</button>
+          </div>
+          <span id="recordBadge" class="record-badge"></span>
+          <div class="view-size-stepper">
+            <button id="vsMinus">&minus;</button>
+            <span class="vs-label" id="vsLabel">10</span>
+            <button id="vsPlus">+</button>
+          </div>
+          <div class="table-actions">
+            <button id="exportCsvBtn" title="Export as CSV">CSV</button>
+          </div>
+        </div>
+
+        <!-- Empty state -->
+        <div class="table-empty-state" id="tableEmptyState">
+          <div class="empty-icon">&#x1F4CB;</div>
+          <p>No page loaded</p>
+          <p>Connect to a device, then use Read Page or Download All</p>
+        </div>
+
+        <!-- Map -->
+        <div class="map-container hidden" id="mapContainer"></div>
+
+        <!-- Table -->
+        <div class="table-wrapper" id="tableWrapper" style="display: none">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>KST Time</th>
+                <th>Latitude</th>
+                <th>Longitude</th>
+              </tr>
+            </thead>
+            <tbody id="pageTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Log -->
+      <div class="card">
+        <div class="log-wrapper">
+          <div class="log-header">
+            <span>Console Log</span>
+            <button class="log-clear" id="clearLogBtn">Clear</button>
+          </div>
+          <textarea id="log" readonly></textarea>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const SERVICE_UUID = 0x00ff;
+      const DATA_CHAR_UUID = 0xff01;
+      const CMD_CHAR_UUID = 0xff02;
+
+      let device = null;
+      let gattServer = null;
+      let dataChar = null;
+      let cmdChar = null;
+      let pendingCommand = null;
+
+      const statusEl = document.getElementById("status");
+      const statusBadge = document.getElementById("statusBadge");
+      const deviceNameEl = document.getElementById("deviceName");
+      const epochEl = document.getElementById("epoch");
+      const kstEl = document.getElementById("kst");
+      const latEl = document.getElementById("lat");
+      const lonEl = document.getElementById("lon");
+      const fileSizeEl = document.getElementById("fileSize");
+      const totalPagesEl = document.getElementById("totalPages");
+      const lastPageEl = document.getElementById("lastPage");
+      const deleteResultEl = document.getElementById("deleteResult");
+      const logEl = document.getElementById("log");
+      const pageTableBody = document.getElementById("pageTableBody");
+      const tableCard = document.getElementById("tableCard");
+      const tableToolbar = document.getElementById("tableToolbar");
+      const tableWrapper = document.getElementById("tableWrapper");
+      const tableEmptyState = document.getElementById("tableEmptyState");
+      const progressContainer = document.getElementById("downloadProgress");
+      const progressFill = document.getElementById("progressFill");
+      const progressText = document.getElementById("progressText");
+
+      const connectBtn = document.getElementById("connectBtn");
+      const disconnectBtn = document.getElementById("disconnectBtn");
+      const sizeBtn = document.getElementById("sizeBtn");
+      const downloadAllBtn = document.getElementById("downloadAllBtn");
+      const pageBtn = document.getElementById("pageBtn");
+      const deleteBtn = document.getElementById("deleteBtn");
+      const pageInput = document.getElementById("pageInput");
+      const clearLogBtn = document.getElementById("clearLogBtn");
+      const navFirst = document.getElementById("navFirst");
+      const navPrev = document.getElementById("navPrev");
+      const navNext = document.getElementById("navNext");
+      const navLast = document.getElementById("navLast");
+      const navLabel = document.getElementById("navLabel");
+      const recordBadge = document.getElementById("recordBadge");
+      const exportCsvBtn = document.getElementById("exportCsvBtn");
+      const mapContainer = document.getElementById("mapContainer");
+      const vsLabel = document.getElementById("vsLabel");
+      const vsMinus = document.getElementById("vsMinus");
+      const vsPlus = document.getElementById("vsPlus");
+
+      let currentFileSize = 0;
+      let currentPage = 0;
+      let totalPageCount = 0;
+      let lastPageData = null;
+      let pollTimerId = null;
+      let isDownloading = false;
+      let viewSize = 10;
+
+      // Leaflet map (lazy init)
+      let map = null;
+      let pathLayer = null;
+      let markerLayer = null;
+
+      function log(message) {
+        const line = `[${new Date().toLocaleTimeString()}] ${message}`;
+        logEl.value += `${line}\n`;
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      clearLogBtn.addEventListener("click", () => {
+        logEl.value = "";
+      });
+
+      function setConnectedUI(connected) {
+        connectBtn.disabled = connected;
+        disconnectBtn.disabled = !connected;
+        sizeBtn.disabled = !connected;
+        downloadAllBtn.disabled = !connected;
+        pageBtn.disabled = !connected;
+        deleteBtn.disabled = !connected;
+
+        if (connected) {
+          statusEl.textContent = "Connected";
+          statusBadge.classList.add("connected");
+        } else {
+          statusEl.textContent = "Disconnected";
+          statusBadge.classList.remove("connected");
+        }
+        updateNavUI();
+      }
+
+      function updatePageStats(fileSize) {
+        currentFileSize = fileSize >>> 0;
+        totalPageCount = Math.ceil(currentFileSize / 240);
+        const lastPage = totalPageCount > 0 ? totalPageCount - 1 : -1;
+        totalPagesEl.style.display = "inline";
+        totalPagesEl.textContent = `${totalPageCount} pages`;
+        lastPageEl.style.display = "inline";
+        lastPageEl.textContent = `last: ${lastPage}`;
+        updateNavUI();
+      }
+
+      function startPolling() {
+        stopPolling();
+        pollTimerId = setInterval(pollFileSize, 10000);
+      }
+
+      function stopPolling() {
+        if (pollTimerId) {
+          clearInterval(pollTimerId);
+          pollTimerId = null;
+        }
+      }
+
+      async function pollFileSize() {
+        if (!cmdChar || isDownloading) return;
+        try {
+          const result = await sendCommandAndWait(new Uint8Array([0x00]), 0x00);
+          const newSize = result.size >>> 0;
+          if (newSize === currentFileSize) return;
+
+          const oldSize = currentFileSize;
+          const wasOnLastPage =
+            currentPage >= (totalPageCount > 0 ? totalPageCount - 1 : 0);
+          updatePageStats(newSize);
+          fileSizeEl.textContent = `${newSize.toLocaleString()} bytes`;
+
+          // Only auto-navigate if user was already viewing the last page
+          if (wasOnLastPage) {
+            const lastPage = totalPageCount > 0 ? totalPageCount - 1 : 0;
+            await loadPage(lastPage);
+            log(
+              `auto-refresh: ${oldSize} -> ${newSize} bytes, showing page ${lastPage}`,
+            );
+          } else {
+            log(
+              `auto-refresh: ${oldSize} -> ${newSize} bytes (staying on page ${currentPage})`,
+            );
+          }
+        } catch (err) {
+          // Silently ignore poll errors (e.g. device busy)
+        }
+      }
+
+      function parseUint64LE(dataView, byteOffset) {
+        const low = dataView.getUint32(byteOffset, true);
+        const high = dataView.getUint32(byteOffset + 4, true);
+        return (BigInt(high) << 32n) | BigInt(low);
+      }
+
+      function formatKstFromCompact(compactBigInt) {
+        const s = compactBigInt.toString();
+        if (compactBigInt <= 0n || s.length !== 14) return "\u2014";
+        const y = s.slice(0, 4);
+        const mo = s.slice(4, 6);
+        const d = s.slice(6, 8);
+        const h = s.slice(8, 10);
+        const mi = s.slice(10, 12);
+        const sec = s.slice(12, 14);
+        return `${y}-${mo}-${d} ${h}:${mi}:${sec}`;
+      }
+
+      function bytesToHex(uint8arr, maxLen = 240) {
+        const len = Math.min(uint8arr.length, maxLen);
+        let out = "";
+        for (let i = 0; i < len; i++) {
+          out += uint8arr[i].toString(16).padStart(2, "0");
+        }
+        return out;
+      }
+
+      function showTableData(show) {
+        tableToolbar.style.display = show ? "flex" : "none";
+        tableWrapper.style.display = show ? "block" : "none";
+        tableEmptyState.style.display = show ? "none" : "flex";
+        if (!show) mapContainer.classList.add("hidden");
+      }
+
+      function initMap() {
+        if (map) return;
+        mapContainer.classList.remove("hidden");
+        map = L.map(mapContainer, {
+          zoomControl: true,
+          attributionControl: false,
+        });
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+        }).addTo(map);
+        pathLayer = L.polyline([], {
+          color: "#6c8cff",
+          weight: 3,
+          opacity: 0.8,
+        }).addTo(map);
+        markerLayer = L.layerGroup().addTo(map);
+      }
+
+      function updateMap(coords) {
+        // coords = [{lat, lon, label}]
+        if (coords.length === 0) {
+          mapContainer.classList.add("hidden");
+          return;
+        }
+        mapContainer.classList.remove("hidden");
+        initMap();
+        markerLayer.clearLayers();
+        const latLngs = coords.map((c) => [c.lat, c.lon]);
+        pathLayer.setLatLngs(latLngs);
+
+        // Start marker (green), end marker (red)
+        const startIcon = L.divIcon({
+          className: "",
+          html: '<div style="width:10px;height:10px;background:#4ade80;border-radius:50%;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.4)"></div>',
+          iconSize: [10, 10],
+          iconAnchor: [5, 5],
+        });
+        const endIcon = L.divIcon({
+          className: "",
+          html: '<div style="width:10px;height:10px;background:#f87171;border-radius:50%;border:2px solid #fff;box-shadow:0 0 4px rgba(0,0,0,.4)"></div>',
+          iconSize: [10, 10],
+          iconAnchor: [5, 5],
+        });
+
+        L.marker(latLngs[0], { icon: startIcon })
+          .bindTooltip(coords[0].label, { permanent: false })
+          .addTo(markerLayer);
+        if (latLngs.length > 1) {
+          const last = latLngs.length - 1;
+          L.marker(latLngs[last], { icon: endIcon })
+            .bindTooltip(coords[last].label, { permanent: false })
+            .addTo(markerLayer);
+        }
+
+        map.fitBounds(pathLayer.getBounds().pad(0.15));
+        setTimeout(() => map.invalidateSize(), 50);
+      }
+
+      function updateNavUI() {
+        const step = viewSize / 10;
+        const hasTotalInfo = totalPageCount > 0;
+        const totalViews = hasTotalInfo ? Math.ceil(totalPageCount / step) : 0;
+        const currentView = Math.floor(currentPage / step) + 1;
+        navLabel.textContent = hasTotalInfo
+          ? `${currentView} / ${totalViews}`
+          : `Page ${currentPage}`;
+        pageInput.value = currentPage;
+        if (hasTotalInfo) {
+          pageInput.max = totalPageCount - 1;
+        }
+        navFirst.disabled = !cmdChar || currentPage <= 0;
+        navPrev.disabled = !cmdChar || currentPage <= 0;
+        navNext.disabled =
+          !cmdChar || (hasTotalInfo && currentPage + step >= totalPageCount);
+        navLast.disabled =
+          !cmdChar || !hasTotalInfo || currentPage + step >= totalPageCount;
+      }
+
+      function renderPageTable(pageData) {
+        lastPageData = pageData;
+        showTableData(true);
+        pageTableBody.innerHTML = "";
+        const RECORD_SIZE = 24;
+        const totalRecords = Math.floor(pageData.byteLength / RECORD_SIZE);
+        let validCount = 0;
+        const coords = [];
+
+        for (let i = 0; i < totalRecords; i++) {
+          const offset = i * RECORD_SIZE;
+          const view = new DataView(
+            pageData.buffer,
+            pageData.byteOffset + offset,
+            RECORD_SIZE,
+          );
+          const compactTime = parseUint64LE(view, 0);
+          const lat = view.getFloat64(8, true);
+          const lon = view.getFloat64(16, true);
+
+          const isEmpty = compactTime === 0n && lat === 0 && lon === 0;
+          if (!isEmpty) {
+            validCount++;
+            coords.push({ lat, lon, label: formatKstFromCompact(compactTime) });
+          }
+
+          const tr = document.createElement("tr");
+          if (isEmpty) tr.classList.add("row-empty");
+          tr.innerHTML = `
+          <td>${i}</td>
+          <td>${isEmpty ? "\u2014" : formatKstFromCompact(compactTime)}</td>
+          <td>${isEmpty ? "\u2014" : lat.toFixed(6)}</td>
+          <td>${isEmpty ? "\u2014" : lon.toFixed(6)}</td>
+        `;
+          pageTableBody.appendChild(tr);
+        }
+
+        recordBadge.textContent = `${validCount} / ${totalRecords} records`;
+        updateNavUI();
+        updateMap(coords);
+      }
+
+      function setGpsValue(el, text) {
+        el.textContent = text;
+        el.classList.toggle("empty", text === "\u2014");
+      }
+
+      function onDataNotification(event) {
+        const value = event.target.value;
+        if (value.byteLength !== 24) {
+          log(`FF01 payload size mismatch: ${value.byteLength}`);
+          return;
+        }
+
+        const compactTime = parseUint64LE(value, 0);
+        const lat = value.getFloat64(8, true);
+        const lon = value.getFloat64(16, true);
+
+        setGpsValue(epochEl, compactTime.toString());
+        setGpsValue(kstEl, formatKstFromCompact(compactTime));
+        setGpsValue(latEl, lat.toFixed(6));
+        setGpsValue(lonEl, lon.toFixed(6));
+      }
+
+      function onCmdNotification(event) {
+        const value = event.target.value;
+        const bytes = new Uint8Array(
+          value.buffer,
+          value.byteOffset,
+          value.byteLength,
+        );
+        if (!pendingCommand) {
+          log(`FF02 notify (unmatched): len=${bytes.length}`);
+          return;
+        }
+
+        const { type, resolve, reject, timeoutId } = pendingCommand;
+        clearTimeout(timeoutId);
+        pendingCommand = null;
+
+        if (type === 0x00 && bytes.length === 4) {
+          const size =
+            bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | (bytes[3] << 24);
+          resolve({ size });
+          return;
+        }
+
+        if (type === 0x01 && bytes.length === 240) {
+          resolve({ pageData: bytes });
+          return;
+        }
+
+        if (type === 0x02 && bytes.length === 1) {
+          resolve({ success: bytes[0] === 0x01 });
+          return;
+        }
+
+        reject(
+          new Error(
+            `Unexpected response: cmd=0x${type.toString(16)}, len=${bytes.length}`,
+          ),
+        );
+      }
+
+      const GATT_COOLDOWN_MS = 80;
+      let gattLock = Promise.resolve();
+
+      function delay(ms) {
+        return new Promise((r) => setTimeout(r, ms));
+      }
+
+      function sendCommandAndWait(
+        payload,
+        expectedType,
+        timeoutMs = 3000,
+        retries = 2,
+      ) {
+        // Serialize all GATT operations through a chain
+        const op = gattLock.then(() =>
+          _sendCommandOnce(payload, expectedType, timeoutMs, retries),
+        );
+        gattLock = op.catch(() => {}).then(() => delay(GATT_COOLDOWN_MS));
+        return op;
+      }
+
+      async function _sendCommandOnce(
+        payload,
+        expectedType,
+        timeoutMs,
+        retries,
+      ) {
+        if (!cmdChar) throw new Error("cmd characteristic not ready");
+
+        for (let attempt = 0; attempt <= retries; attempt++) {
+          try {
+            return await new Promise(async (resolve, reject) => {
+              const timeoutId = setTimeout(() => {
+                if (pendingCommand) {
+                  pendingCommand = null;
+                  reject(new Error("command timeout"));
+                }
+              }, timeoutMs);
+
+              pendingCommand = {
+                type: expectedType,
+                resolve,
+                reject,
+                timeoutId,
+              };
+
+              try {
+                await cmdChar.writeValue(payload);
+              } catch (err) {
+                clearTimeout(timeoutId);
+                pendingCommand = null;
+                reject(err);
+              }
+            });
+          } catch (err) {
+            const isGattBusy =
+              err.message && err.message.includes("GATT operation");
+            if (isGattBusy && attempt < retries) {
+              log(`GATT busy, retry ${attempt + 1}/${retries}...`);
+              await delay(150 * (attempt + 1));
+              continue;
+            }
+            throw err;
+          }
+        }
+      }
+
+      async function connect() {
+        try {
+          if (!navigator.bluetooth) {
+            alert(
+              "Web Bluetooth 미지원 브라우저입니다. Chrome/Edge(HTTPS)에서 실행하세요.",
+            );
+            return;
+          }
+
+          device = await navigator.bluetooth.requestDevice({
+            filters: [{ services: [SERVICE_UUID] }],
+            optionalServices: [SERVICE_UUID],
+          });
+
+          device.addEventListener("gattserverdisconnected", () => {
+            stopPolling();
+            setConnectedUI(false);
+            deviceNameEl.textContent = "";
+            log("Disconnected");
+          });
+
+          gattServer = await device.gatt.connect();
+          const service = await gattServer.getPrimaryService(SERVICE_UUID);
+
+          dataChar = await service.getCharacteristic(DATA_CHAR_UUID);
+          cmdChar = await service.getCharacteristic(CMD_CHAR_UUID);
+
+          await dataChar.startNotifications();
+          dataChar.addEventListener(
+            "characteristicvaluechanged",
+            onDataNotification,
+          );
+
+          await cmdChar.startNotifications();
+          cmdChar.addEventListener(
+            "characteristicvaluechanged",
+            onCmdNotification,
+          );
+
+          setConnectedUI(true);
+          const name = device.name || "(unknown)";
+          deviceNameEl.textContent = name;
+          log(`Connected: ${name}`);
+
+          // Auto-load: get file size, then load last page
+          try {
+            const sizeResult = await sendCommandAndWait(
+              new Uint8Array([0x00]),
+              0x00,
+            );
+            updatePageStats(sizeResult.size);
+            fileSizeEl.textContent = `${sizeResult.size.toLocaleString()} bytes`;
+            if (totalPageCount > 0) {
+              await loadPage(totalPageCount - 1);
+            }
+          } catch (e) {
+            log(`auto-load failed: ${e.message}`);
+          }
+
+          startPolling();
+        } catch (err) {
+          log(`Connect failed: ${err.message}`);
+        }
+      }
+
+      async function disconnect() {
+        stopPolling();
+        try {
+          if (dataChar)
+            dataChar.removeEventListener(
+              "characteristicvaluechanged",
+              onDataNotification,
+            );
+          if (cmdChar)
+            cmdChar.removeEventListener(
+              "characteristicvaluechanged",
+              onCmdNotification,
+            );
+          if (device?.gatt?.connected) device.gatt.disconnect();
+        } finally {
+          pendingCommand = null;
+          dataChar = null;
+          cmdChar = null;
+          gattServer = null;
+          device = null;
+          currentFileSize = 0;
+          totalPageCount = 0;
+          currentPage = 0;
+          lastPageData = null;
+          fileSizeEl.textContent = "\u2014";
+          totalPagesEl.style.display = "none";
+          lastPageEl.style.display = "none";
+          deleteResultEl.style.display = "none";
+          pageTableBody.innerHTML = "";
+          showTableData(false);
+          progressContainer.classList.remove("visible");
+          setConnectedUI(false);
+          deviceNameEl.textContent = "";
+        }
+      }
+
+      connectBtn.addEventListener("click", connect);
+      disconnectBtn.addEventListener("click", disconnect);
+
+      sizeBtn.addEventListener("click", async () => {
+        try {
+          const payload = new Uint8Array([0x00]);
+          const result = await sendCommandAndWait(payload, 0x00);
+          fileSizeEl.textContent = `${result.size.toLocaleString()} bytes`;
+          updatePageStats(result.size);
+          log(`size=${result.size}`);
+        } catch (err) {
+          log(`size cmd failed: ${err.message}`);
+        }
+      });
+
+      downloadAllBtn.addEventListener("click", async () => {
+        try {
+          isDownloading = true;
+          downloadAllBtn.disabled = true;
+          const sizeResp = await sendCommandAndWait(
+            new Uint8Array([0x00]),
+            0x00,
+          );
+          const fileSize = sizeResp.size >>> 0;
+          updatePageStats(fileSize);
+          fileSizeEl.textContent = `${fileSize.toLocaleString()} bytes`;
+
+          if (fileSize === 0) {
+            const emptyBlob = new Blob([new Uint8Array(0)], {
+              type: "application/octet-stream",
+            });
+            const url = URL.createObjectURL(emptyBlob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "location.bin";
+            a.click();
+            URL.revokeObjectURL(url);
+            log("download complete: location.bin (0 bytes)");
+            downloadAllBtn.disabled = false;
+            return;
+          }
+
+          const totalPages = Math.ceil(fileSize / 240);
+          const allData = new Uint8Array(totalPages * 240);
+
+          progressContainer.classList.add("visible");
+          progressFill.style.width = "0%";
+          progressText.textContent = `0 / ${totalPages}`;
+
+          for (let page = 0; page < totalPages; page++) {
+            const req = new Uint8Array(5);
+            req[0] = 0x01;
+            req[1] = page & 0xff;
+            req[2] = (page >>> 8) & 0xff;
+            req[3] = (page >>> 16) & 0xff;
+            req[4] = (page >>> 24) & 0xff;
+
+            const result = await sendCommandAndWait(req, 0x01, 7000);
+            allData.set(result.pageData, page * 240);
+
+            // Live table update: show current viewSize chunk
+            const step = viewSize / 10;
+            const viewStart = Math.floor(page / step) * step;
+            currentPage = viewStart;
+            const viewEnd = Math.min(viewStart + step, page + 1);
+            renderPageTable(allData.slice(viewStart * 240, viewEnd * 240));
+
+            const pct = (((page + 1) / totalPages) * 100).toFixed(1);
+            progressFill.style.width = `${pct}%`;
+            progressText.textContent = `${page + 1} / ${totalPages} (${pct}%)`;
+
+            if (page % 32 === 0 || page === totalPages - 1) {
+              log(`download progress: ${page + 1}/${totalPages}`);
+            }
+          }
+
+          const trimmed = allData.slice(0, fileSize);
+          const blob = new Blob([trimmed], {
+            type: "application/octet-stream",
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "location.bin";
+          a.click();
+          URL.revokeObjectURL(url);
+          log(`download complete: location.bin (${fileSize} bytes)`);
+
+          setTimeout(() => {
+            progressContainer.classList.remove("visible");
+          }, 3000);
+        } catch (err) {
+          log(`download failed: ${err.message}`);
+        } finally {
+          isDownloading = false;
+          if (device?.gatt?.connected) downloadAllBtn.disabled = false;
+        }
+      });
+
+      async function fetchOnePage(page) {
+        page = page >>> 0;
+        const payload = new Uint8Array(5);
+        payload[0] = 0x01;
+        payload[1] = page & 0xff;
+        payload[2] = (page >>> 8) & 0xff;
+        payload[3] = (page >>> 16) & 0xff;
+        payload[4] = (page >>> 24) & 0xff;
+        const result = await sendCommandAndWait(payload, 0x01, 5000);
+        return result.pageData;
+      }
+
+      async function loadPage(startPage) {
+        startPage = startPage >>> 0;
+        const blePagesNeeded = viewSize / 10;
+        const maxPage =
+          totalPageCount > 0 ? totalPageCount : startPage + blePagesNeeded;
+        const endPage = Math.min(startPage + blePagesNeeded, maxPage);
+        const count = endPage - startPage;
+
+        const combined = new Uint8Array(count * 240);
+        for (let i = 0; i < count; i++) {
+          const data = await fetchOnePage(startPage + i);
+          combined.set(data, i * 240);
+        }
+
+        currentPage = startPage;
+        log(`loaded pages ${startPage}-${endPage - 1} (${count * 10} records)`);
+        renderPageTable(combined);
+      }
+
+      pageBtn.addEventListener("click", async () => {
+        try {
+          await loadPage(Number(pageInput.value || 0));
+        } catch (err) {
+          log(`page cmd failed: ${err.message}`);
+        }
+      });
+
+      pageInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") pageBtn.click();
+      });
+
+      async function changeViewSize(newSize) {
+        newSize = Math.max(10, Math.round(newSize / 10) * 10);
+        if (newSize === viewSize) return;
+        viewSize = newSize;
+        vsLabel.textContent = viewSize;
+        vsMinus.disabled = viewSize <= 10;
+        if (lastPageData && cmdChar) {
+          const step = viewSize / 10;
+          const alignedStart = Math.floor(currentPage / step) * step;
+          try {
+            await loadPage(alignedStart);
+          } catch (err) {
+            log(`page cmd failed: ${err.message}`);
+          }
+        } else {
+          updateNavUI();
+        }
+      }
+      vsMinus.addEventListener("click", () => changeViewSize(viewSize - 10));
+      vsPlus.addEventListener("click", () => changeViewSize(viewSize + 10));
+
+      navFirst.addEventListener("click", async () => {
+        try {
+          await loadPage(0);
+        } catch (err) {
+          log(`page cmd failed: ${err.message}`);
+        }
+      });
+      navPrev.addEventListener("click", async () => {
+        const step = viewSize / 10;
+        const prev = Math.max(0, currentPage - step);
+        try {
+          await loadPage(prev);
+        } catch (err) {
+          log(`page cmd failed: ${err.message}`);
+        }
+      });
+      navNext.addEventListener("click", async () => {
+        const step = viewSize / 10;
+        try {
+          await loadPage(currentPage + step);
+        } catch (err) {
+          log(`page cmd failed: ${err.message}`);
+        }
+      });
+      navLast.addEventListener("click", async () => {
+        if (totalPageCount <= 0) return;
+        const step = viewSize / 10;
+        const lastStart = Math.max(
+          0,
+          Math.floor((totalPageCount - 1) / step) * step,
+        );
+        try {
+          await loadPage(lastStart);
+        } catch (err) {
+          log(`page cmd failed: ${err.message}`);
+        }
+      });
+
+      exportCsvBtn.addEventListener("click", () => {
+        if (!lastPageData) return;
+        const RECORD_SIZE = 24;
+        const totalRecords = Math.floor(lastPageData.byteLength / RECORD_SIZE);
+        const rows = ["KST Time,Latitude,Longitude"];
+        for (let i = 0; i < totalRecords; i++) {
+          const offset = i * RECORD_SIZE;
+          const view = new DataView(
+            lastPageData.buffer,
+            lastPageData.byteOffset + offset,
+            RECORD_SIZE,
+          );
+          const compactTime = parseUint64LE(view, 0);
+          const lat = view.getFloat64(8, true);
+          const lon = view.getFloat64(16, true);
+          if (compactTime === 0n && lat === 0 && lon === 0) continue;
+          rows.push(
+            `${formatKstFromCompact(compactTime)},${lat.toFixed(6)},${lon.toFixed(6)}`,
+          );
+        }
+        const step = viewSize / 10;
+        const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `pages_${currentPage}-${currentPage + step - 1}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        log(`exported ${rows.length - 1} records as CSV`);
+      });
+
+      deleteBtn.addEventListener("click", async () => {
+        if (!confirm("정말 모든 데이터를 삭제하시겠습니까?")) return;
+        try {
+          const payload = new Uint8Array([0x02]);
+          const result = await sendCommandAndWait(payload, 0x02);
+          deleteResultEl.style.display = "inline";
+          deleteResultEl.textContent = result.success ? "Deleted" : "Failed";
+          if (result.success) {
+            updatePageStats(0);
+            fileSizeEl.textContent = "0 bytes";
+            totalPagesEl.style.display = "none";
+            lastPageEl.style.display = "none";
+            pageTableBody.innerHTML = "";
+            lastPageData = null;
+            currentPage = 0;
+            showTableData(false);
+          }
+          log(`delete=${result.success ? "success" : "fail"}`);
+        } catch (err) {
+          log(`delete cmd failed: ${err.message}`);
+        }
+      });
+    </script>
+  </body>
+</html>
