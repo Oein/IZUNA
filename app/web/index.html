@@ -624,6 +624,19 @@
           </div>
           <div class="separator"></div>
           <div class="cmd-row">
+            <button id="readLogBtn" disabled>Read Log</button>
+            <input
+              id="logPageInput"
+              type="number"
+              min="0"
+              max="15"
+              value="0"
+              placeholder="0-15"
+            />
+            <span class="cmd-info">0x03</span>
+          </div>
+          <div class="separator"></div>
+          <div class="cmd-row">
             <button id="deleteBtn" class="danger" disabled>
               Delete All Data
             </button>
@@ -746,6 +759,8 @@
       const downloadAllBtn = document.getElementById("downloadAllBtn");
       const pageBtn = document.getElementById("pageBtn");
       const deleteBtn = document.getElementById("deleteBtn");
+      const readLogBtn = document.getElementById("readLogBtn");
+      const logPageInput = document.getElementById("logPageInput");
       const pageInput = document.getElementById("pageInput");
       const clearLogBtn = document.getElementById("clearLogBtn");
       const navFirst = document.getElementById("navFirst");
@@ -796,6 +811,7 @@
         sizeBtn.disabled = !connected;
         downloadAllBtn.disabled = !connected;
         pageBtn.disabled = !connected;
+        readLogBtn.disabled = !connected;
         deleteBtn.disabled = !connected;
 
         if (connected) {
@@ -1067,6 +1083,11 @@
 
         if (type === 0x02 && bytes.length === 1) {
           resolve({ success: bytes[0] === 0x01 });
+          return;
+        }
+
+        if (type === 0x03 && bytes.length === 240) {
+          resolve({ logData: bytes });
           return;
         }
 
@@ -1505,6 +1526,19 @@
         a.click();
         URL.revokeObjectURL(url);
         log(`exported ${rows.length - 1} records as CSV`);
+      });
+
+      readLogBtn.addEventListener("click", async () => {
+        try {
+          const page = Math.max(0, Math.min(15, Number(logPageInput.value) || 0));
+          const payload = new Uint8Array([0x03, page]);
+          const result = await sendCommandAndWait(payload, 0x03, 5000);
+          const decoder = new TextDecoder();
+          const text = decoder.decode(result.logData).replace(/\0+$/g, "");
+          log(`[log p${page}] ${text}`);
+        } catch (err) {
+          log(`log cmd failed: ${err.message}`);
+        }
       });
 
       deleteBtn.addEventListener("click", async () => {

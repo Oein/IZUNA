@@ -28,6 +28,7 @@ export default function App() {
     getFileSize,
     downloadAll,
     deleteAllData,
+    readLog,
     goToPage,
     goFirst,
     goPrev,
@@ -63,6 +64,7 @@ export default function App() {
           onGetSize={getFileSize}
           onDownloadAll={downloadAll}
           onDeleteAll={deleteAllData}
+          onReadLog={readLog}
         />
 
         <PageRecordsCard

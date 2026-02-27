@@ -13,7 +13,8 @@ const SCAN_TIMEOUT_MS = 15000;
 type CommandResult =
   | {type: 'size'; size: number}
   | {type: 'page'; pageData: Uint8Array}
-  | {type: 'delete'; success: boolean};
+  | {type: 'delete'; success: boolean}
+  | {type: 'log'; logData: Uint8Array};
 
 interface PendingCommand {
   expectedType: number;
@@ -164,6 +165,11 @@ class BleService {
 
     if (expectedType === 0x02 && bytes.length === 1) {
       resolve({type: 'delete', success: bytes[0] === 0x01});
+      return;
+    }
+
+    if (expectedType === 0x03 && bytes.length === 240) {
+      resolve({type: 'log', logData: new Uint8Array(bytes)});
       return;
     }
 

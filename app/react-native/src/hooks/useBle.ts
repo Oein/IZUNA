@@ -422,6 +422,26 @@ export function useBle() {
     }
   }, [updatePageStats, parsePageRecords, log]);
 
+  // Read device log page (0x03)
+  const readLog = useCallback(
+    async (page: number) => {
+      try {
+        const p = Math.max(0, Math.min(15, page)) & 0xff;
+        const payload = new Uint8Array([0x03, p]);
+        const result = await bleService.sendCommand(payload, 0x03, 5000);
+        if (result.type === 'log') {
+          const text = new TextDecoder()
+            .decode(result.logData)
+            .replace(/\0+$/, '');
+          log(`[log p${p}] ${text}`);
+        }
+      } catch (err: any) {
+        log(`log cmd failed: ${err.message}`);
+      }
+    },
+    [log],
+  );
+
   // Delete all data
   const deleteAllData = useCallback(async () => {
     Alert.alert('Delete All Data', '정말 모든 데이터를 삭제하시겠습니까?', [
@@ -544,6 +564,7 @@ export function useBle() {
     getFileSize,
     downloadAll,
     deleteAllData,
+    readLog,
     goToPage,
     goFirst,
     goPrev,
