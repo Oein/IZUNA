@@ -15,6 +15,7 @@ IZUNA (Georecord) 장치에서 BLE로 전체 위치 기록을 받아 PC에 저�
   uv run izuna_dump.py -o ./dump       # 출력 폴더 지정
   uv run izuna_dump.py --logs          # 장치 로그도 함께 저장
   uv run izuna_dump.py --delete        # 다운로드 검증 후 장치 데이터 삭제
+  uv run izuna_dump.py --wipe          # 다운로드 없이 장치 데이터 전체 삭제 (확인 후)
   uv run izuna_dump.py --from-bin location.bin   # 이미 받은 .bin을 CSV/GPX로 변환
 """
 
@@ -262,6 +263,28 @@ async def dump(args) -> None:
                 log("device data deleted" if ok else "delete failed")
 
 
+async def wipe(args) -> None:
+    from bleak import BleakClient
+
+    dev = await find_device(args.address, args.scan_timeout)
+    async with BleakClient(dev) as client:
+        g = Georecord(client)
+        await g.start()
+
+        size = await g.file_size()
+        log(f"file size: {size:,} bytes ({size // RECORD_SIZE} records)")
+        if not args.yes:
+            answer = input(f"{dev.name or dev.address} 의 위치 기록 {size // RECORD_SIZE}개를 모두 삭제합니다. 계속할까요? [y/N] ")
+            if answer.strip().lower() not in ("y", "yes"):
+                log("cancelled")
+                return
+
+        ok = await g.delete_all()
+        if not ok:
+            raise SystemExit("delete failed")
+        log(f"device data deleted (file size now: {await g.file_size():,} bytes)")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(description="IZUNA 장치의 전체 위치 기록을 PC로 다운로드")
     p.add_argument("-o", "--output", type=Path, default=None, help="출력 폴더 (기본: ./izuna_YYYYmmdd_HHMMSS)")
@@ -269,6 +292,8 @@ def main() -> None:
     p.add_argument("--scan-timeout", type=float, default=15.0, help="스캔 타임아웃 초 (기본 15)")
     p.add_argument("--logs", action="store_true", help="장치 로그 버퍼도 저장")
     p.add_argument("--delete", action="store_true", help="다운로드 후 장치의 위치 기록 삭제")
+    p.add_argument("--wipe", action="store_true", help="다운로드 없이 장치의 위치 기록 전체 삭제")
+    p.add_argument("-y", "--yes", action="store_true", help="--wipe 확인 프롬프트 생략")
     p.add_argument("--from-bin", type=Path, help="BLE 대신 기존 location.bin 을 CSV/GPX로 변환")
     args = p.parse_args()
 
@@ -281,7 +306,7 @@ def main() -> None:
         return
 
     try:
-        asyncio.run(dump(args))
+        asyncio.run(wipe(args) if args.wipe else dump(args))
     except KeyboardInterrupt:
         log("\ninterrupted")
         sys.exit(130)

@@ -7,6 +7,7 @@ macOS / Windows / Linux 지원 ([bleak](https://github.com/hbldh/bleak)).
 uv run izuna_dump.py                  # 스캔 → 전체 다운로드 (./izuna_YYYYmmdd_HHMMSS/)
 uv run izuna_dump.py -o ./dump --logs # 출력 폴더 지정 + 장치 로그 저장
 uv run izuna_dump.py --delete         # 다운로드 검증 후 장치 데이터 삭제
+uv run izuna_dump.py --wipe           # 다운로드 없이 장치 데이터 전체 삭제 (-y: 확인 생략)
 uv run izuna_dump.py --from-bin location.bin  # 기존 .bin → CSV/GPX 변환
 ```
 
